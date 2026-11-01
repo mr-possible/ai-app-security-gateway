@@ -9,7 +9,7 @@ system-prompt leakage, and traces every decision to Langfuse.
 ## Status
 - [x] Step 1: Input guardrails: PII masker + prompt-injection detector
 - [x] Step 2: Output inspector: secret redaction, canary tokens, system prompt overlap
-- [ ] Step 3: Core config, error payloads, logging
+- [x] Step 3: Core: validated settings, security error payloads, JSON logging with PII scrubbing
 - [ ] Step 4: OpenAI client + Langfuse telemetry
 - [ ] Step 5: `/v1/chat/completions` proxy + `/health`
 - [ ] Step 6: Docker + docker-compose
