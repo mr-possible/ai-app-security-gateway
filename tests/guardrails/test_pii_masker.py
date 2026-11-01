@@ -1,6 +1,6 @@
 import pytest
 
-from app.guardrails.pii_masker import PIIMasker, PIIType, luhn_valid
+from app.guardrails.pii_masker import PIIMasker, PIIType, RegexPIIDetector, luhn_valid
 
 # Fake secrets are assembled at runtime instead of written out literally, so secret
 # scanners (GitHub push protection, gitleaks) don't flag this test file.
@@ -80,3 +80,9 @@ def test_restore_ignores_unknown_tokens(masker):
 def test_repr_does_not_leak_original_values(masker):
     result = masker.mask("contact a@x.com")
     assert "a@x.com" not in repr(result)
+
+
+def test_detector_can_be_limited_to_specific_types():
+    detector = RegexPIIDetector(types={PIIType.API_KEY})
+    findings = detector.detect(f"mail a@x.com, key {FAKE_OPENAI_KEY}")
+    assert [f.pii_type for f in findings] == [PIIType.API_KEY]

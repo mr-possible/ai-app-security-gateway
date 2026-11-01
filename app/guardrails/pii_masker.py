@@ -129,8 +129,14 @@ _PRIORITY = {pii_type: rank for rank, pii_type in enumerate(PIIType)}
 
 
 class RegexPIIDetector:
-    def __init__(self, patterns: Iterable[_Pattern] = _DEFAULT_PATTERNS) -> None:
-        self._patterns = tuple(patterns)
+    def __init__(
+        self,
+        patterns: Iterable[_Pattern] = _DEFAULT_PATTERNS,
+        types: Iterable[PIIType] | None = None,
+    ) -> None:
+        # `types` narrows detection, e.g. the output inspector only hunts for secrets.
+        allowed = frozenset(types) if types is not None else frozenset(PIIType)
+        self._patterns = tuple(p for p in patterns if p.pii_type in allowed)
 
     def detect(self, text: str) -> list[PIIFinding]:
         candidates: list[PIIFinding] = []
