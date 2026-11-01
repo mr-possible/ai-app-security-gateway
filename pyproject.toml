@@ -1,0 +1,36 @@
+[project]
+name = "ai-app-security-gateway"
+version = "0.1.0"
+description = "API security gateway that guards LLM traffic: prompt-injection detection, PII masking, response inspection, and audit tracing."
+authors = [{ name = "Sambhav Dave" }]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = ["fastapi (>=0.162.0,<0.163.0)", "uvicorn[standard] (>=0.54.0,<0.55.0)", "pydantic (>=2.14.2,<3.0.0)", "pydantic-settings (>=2.16.2,<3.0.0)", "openai (>=3.42.0,<4.0.0)", "httpx (>=0.28.1,<0.29.0)", "langfuse (>=5.1.0,<6.0.0)"]
+
+[tool.poetry]
+package-mode = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pyflakes + pycodestyle, I: import sorting, B: bugbear, UP: modern syntax, S: bandit security checks
+select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert is how pytest works
+"tests/**" = ["S101"]
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.2.0,<10.0.0)",
+    "pytest-asyncio (>=1.4.1,<2.0.0)",
+    "ruff (>=0.17.3,<0.18.0)"
+]
