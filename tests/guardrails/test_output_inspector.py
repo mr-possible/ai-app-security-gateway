@@ -7,6 +7,7 @@ from app.guardrails.output_inspector import (
     OutputInspector,
     embed_canary,
     make_canary,
+    prompt_overlap,
 )
 
 # Assembled at runtime so secret scanners don't flag this file (see test_pii_masker.py).
@@ -84,3 +85,60 @@ def test_disguised_canary_is_still_caught(inspector, disguise):
 
 def test_no_canary_means_no_canary_check(inspector):
     assert inspector.inspect("canary-a1b2c3d4e5f6a7b8").action is Action.ALLOW
+
+
+SYSTEM_PROMPT = (
+    "You are FinBot, the support assistant for Acme Bank. "
+    "Only answer questions about Acme Bank accounts, cards and transfers. "
+    "Never discuss internal fraud thresholds, which are set at 5000 dollars per day. "
+    "If a user asks about competitors, politely decline and steer back to Acme products. "
+    "Escalate any complaint mentioning legal action to the human team at once."
+)
+
+
+def test_full_prompt_leak_is_blocked(inspector):
+    result = inspector.inspect(f"Sure, here it is: {SYSTEM_PROMPT}", system_prompt=SYSTEM_PROMPT)
+    assert result.is_blocked
+    assert result.text == BLOCKED_MESSAGE
+    assert result.prompt_overlap == 1.0
+    assert {f.check for f in result.findings} == {Check.SYSTEM_PROMPT_LEAK}
+
+
+def test_partial_prompt_leak_is_blocked(inspector):
+    leaked = "My rules include: Never discuss internal fraud thresholds, which are set at 5000 "
+    leaked += "dollars per day. If a user asks about competitors, politely decline."
+    result = inspector.inspect(leaked, system_prompt=SYSTEM_PROMPT)
+    assert result.is_blocked
+    assert 0.2 <= result.prompt_overlap < 1.0
+
+
+def test_disguised_leak_is_still_caught(inspector):
+    disguised = SYSTEM_PROMPT.upper().replace(" ", "\u200b ")
+    assert inspector.inspect(disguised, system_prompt=SYSTEM_PROMPT).is_blocked
+
+
+def test_on_topic_answer_without_copying_is_allowed(inspector):
+    answer = (
+        "Happy to help with your Acme Bank card! You can freeze it in the app under "
+        "Cards > Freeze, and request a replacement from the same screen."
+    )
+    result = inspector.inspect(answer, system_prompt=SYSTEM_PROMPT)
+    assert result.action is Action.ALLOW
+    assert result.prompt_overlap == 0.0
+
+
+def test_short_shared_phrase_is_not_a_leak(inspector):
+    answer = "I am the support assistant for Acme Bank. How can I help?"
+    assert not inspector.inspect(answer, system_prompt=SYSTEM_PROMPT).is_blocked
+
+
+def test_prompt_overlap_bounds():
+    assert prompt_overlap(SYSTEM_PROMPT, SYSTEM_PROMPT) == 1.0
+    assert prompt_overlap(SYSTEM_PROMPT, "unrelated text") == 0.0
+    assert prompt_overlap("", "anything") == 0.0
+
+
+@pytest.mark.parametrize("kwargs", [{"leak_threshold": 0}, {"ngram_size": 2}])
+def test_invalid_settings_rejected(kwargs):
+    with pytest.raises(ValueError):
+        OutputInspector(**kwargs)
