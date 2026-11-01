@@ -1,6 +1,6 @@
 import pytest
 
-from app.guardrails.pii_masker import PIIMasker, PIIType, RegexPIIDetector, luhn_valid
+from app.guardrails.pii_masker import PIIMasker, PIIType, RegexPIIDetector, luhn_valid, redact
 
 # Fake secrets are assembled at runtime instead of written out literally, so secret
 # scanners (GitHub push protection, gitleaks) don't flag this test file.
@@ -86,3 +86,9 @@ def test_detector_can_be_limited_to_specific_types():
     detector = RegexPIIDetector(types={PIIType.API_KEY})
     findings = detector.detect(f"mail a@x.com, key {FAKE_OPENAI_KEY}")
     assert [f.pii_type for f in findings] == [PIIType.API_KEY]
+
+
+def test_redact_is_one_way_and_unnumbered():
+    text = f"a@x.com and {FAKE_OPENAI_KEY}"
+    out = redact(text, RegexPIIDetector().detect(text))
+    assert out == "[EMAIL_REDACTED] and [API_KEY_REDACTED]"

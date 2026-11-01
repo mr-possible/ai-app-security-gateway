@@ -158,6 +158,19 @@ def _resolve_overlaps(candidates: list[PIIFinding]) -> list[PIIFinding]:
     return sorted(accepted, key=lambda f: f.start)
 
 
+def redact(text: str, findings: Iterable[PIIFinding]) -> str:
+    """One-way redaction: replace each finding with an un-numbered [TYPE_REDACTED]
+    token. Unlike mask(), nothing is kept that could restore the original."""
+    parts: list[str] = []
+    cursor = 0
+    for finding in sorted(findings, key=lambda f: f.start):
+        parts.append(text[cursor : finding.start])
+        parts.append(f"[{finding.pii_type}_REDACTED]")
+        cursor = finding.end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
 _TOKEN_RE = re.compile(r"\[([A-Z_]+)_REDACTED_\d+\]")
 
 # Values that are safe to hand back to the end user who typed them. Secrets are
