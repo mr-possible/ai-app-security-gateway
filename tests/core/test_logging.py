@@ -109,3 +109,14 @@ def test_non_string_values_are_left_intact(log_stream):
     logging.getLogger("app").info("score", extra={"data": {"risk": 0.95, "blocked": True}})
     (entry,) = read_lines(log_stream)
     assert entry["data"] == {"risk": 0.95, "blocked": True}
+
+
+def test_gateway_generated_fields_are_not_scrubbed(log_stream):
+    card_like_id = "4111111111111111"  # passes Luhn, but it's our own id
+    token = request_id_var.set(card_like_id)
+    try:
+        logging.getLogger("app").info("hello")
+    finally:
+        request_id_var.reset(token)
+    (entry,) = read_lines(log_stream)
+    assert entry["request_id"] == card_like_id
