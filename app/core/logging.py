@@ -18,12 +18,36 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, TextIO
 
+from app.guardrails.pii_masker import RegexPIIDetector, redact
+
 # ContextVar (not a global) because the server handles many requests concurrently;
 # each one sees its own value.
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
+def scrub(value: Any, detector: RegexPIIDetector) -> Any:
+    """Recursively redact PII and secrets from strings inside dicts and lists."""
+    if isinstance(value, str):
+        return redact(value, detector.detect(value))
+    if isinstance(value, dict):
+        return {k: scrub(v, detector) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [scrub(v, detector) for v in value]
+    return value
+
+
 class JsonFormatter(logging.Formatter):
+    """Formats records as JSON and, by default, scrubs PII and secrets from them.
+
+    Scrubbing is a safety net, not permission to log sensitive data. Code should
+    still avoid logging prompts and keys; this catches the mistakes, such as an
+    upstream error message that happens to echo an API key.
+    """
+
+    def __init__(self, scrub_pii: bool = True) -> None:
+        super().__init__()
+        self._detector = RegexPIIDetector() if scrub_pii else None
+
     def format(self, record: logging.LogRecord) -> str:
         entry: dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(
@@ -40,6 +64,8 @@ class JsonFormatter(logging.Formatter):
             entry["data"] = data
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
+        if self._detector:
+            entry = scrub(entry, self._detector)
         return json.dumps(entry, default=str)
 
 

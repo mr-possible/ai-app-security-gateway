@@ -73,3 +73,39 @@ def test_level_filtering():
         root.handlers[:] = saved_handlers
         root.setLevel(saved_level)
     assert [e["event"] for e in read_lines(stream)] == ["shown"]
+
+
+FAKE_KEY = "sk-" + "leak" * 8  # assembled at runtime so secret scanners stay quiet
+
+
+def test_secrets_in_messages_are_scrubbed(log_stream):
+    logging.getLogger("app").error("upstream said: invalid key %s", FAKE_KEY)
+    raw = log_stream.getvalue()
+    assert FAKE_KEY not in raw
+    assert "[API_KEY_REDACTED]" in raw
+
+
+def test_pii_inside_structured_data_is_scrubbed(log_stream):
+    logging.getLogger("app").info(
+        "user.lookup",
+        extra={"data": {"user": {"email": "jane@acme.com"}, "phones": ["+91 98765 43210"]}},
+    )
+    (entry,) = read_lines(log_stream)
+    assert entry["data"] == {
+        "user": {"email": "[EMAIL_REDACTED]"},
+        "phones": ["[PHONE_REDACTED]"],
+    }
+
+
+def test_secrets_inside_exception_tracebacks_are_scrubbed(log_stream):
+    try:
+        raise PermissionError(f"auth failed for {FAKE_KEY}")
+    except PermissionError:
+        logging.getLogger("app").exception("llm.auth_failed")
+    assert FAKE_KEY not in log_stream.getvalue()
+
+
+def test_non_string_values_are_left_intact(log_stream):
+    logging.getLogger("app").info("score", extra={"data": {"risk": 0.95, "blocked": True}})
+    (entry,) = read_lines(log_stream)
+    assert entry["data"] == {"risk": 0.95, "blocked": True}
