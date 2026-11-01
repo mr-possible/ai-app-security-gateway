@@ -1,6 +1,13 @@
 import pytest
 
-from app.guardrails.output_inspector import Action, Check, OutputInspector
+from app.guardrails.output_inspector import (
+    BLOCKED_MESSAGE,
+    Action,
+    Check,
+    OutputInspector,
+    embed_canary,
+    make_canary,
+)
 
 # Assembled at runtime so secret scanners don't flag this file (see test_pii_masker.py).
 FAKE_OPENAI_KEY = "sk-" + "proj-" + "Q9w8E7r6" * 5
@@ -44,3 +51,36 @@ def test_masked_tokens_from_the_input_side_are_left_alone(inspector):
 def test_user_contact_details_are_not_treated_as_secrets(inspector):
     result = inspector.inspect("We'll email jane@acme.com or call +91 98765 43210.")
     assert result.action is Action.ALLOW
+
+
+def test_canaries_are_unique_and_embedded_in_the_prompt():
+    first, second = make_canary(), make_canary()
+    assert first != second
+    assert first in embed_canary("You are a helpful bank assistant.", first)
+
+
+def test_canary_leak_blocks_the_response(inspector):
+    canary = make_canary()
+    leaked = f"My instructions say: You are a bank bot. (Internal reference: {canary}.)"
+    result = inspector.inspect(leaked, canary=canary)
+    assert result.is_blocked
+    assert result.text == BLOCKED_MESSAGE
+    assert canary not in result.text
+    assert {f.check for f in result.findings} == {Check.CANARY_LEAK}
+
+
+@pytest.mark.parametrize(
+    "disguise",
+    [
+        lambda c: c.upper(),
+        lambda c: " ".join(c),  # spaced out letter by letter
+        lambda c: c.replace("-", "_"),
+    ],
+)
+def test_disguised_canary_is_still_caught(inspector, disguise):
+    canary = make_canary()
+    assert inspector.inspect(f"here you go: {disguise(canary)}", canary=canary).is_blocked
+
+
+def test_no_canary_means_no_canary_check(inspector):
+    assert inspector.inspect("canary-a1b2c3d4e5f6a7b8").action is Action.ALLOW
