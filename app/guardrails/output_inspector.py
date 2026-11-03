@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.guardrails.injection_detector import normalize
-from app.guardrails.pii_masker import PIIDetector, PIIType, RegexPIIDetector
+from app.guardrails.pii_masker import PIIDetector, PIIType, RegexPIIDetector, redact
 
 # Kinds of data that must never appear in a response. Unlike user PII, these are
 # redacted with un-numbered tokens and never restored.
@@ -154,19 +154,8 @@ class OutputInspector:
 
     def _redact_secrets(self, text: str) -> tuple[str, list[OutputFinding]]:
         detected = self._secret_detector.detect(text)
-        if not detected:
-            return text, []
-
-        parts: list[str] = []
-        cursor = 0
-        for found in detected:
-            parts.append(text[cursor : found.start])
-            parts.append(f"[{found.pii_type}_REDACTED]")
-            cursor = found.end
-        parts.append(text[cursor:])
-
         findings = [
             OutputFinding(Check.SECRET_EXPOSURE, f"{found.pii_type} redacted from response")
             for found in detected
         ]
-        return "".join(parts), findings
+        return redact(text, detected), findings
